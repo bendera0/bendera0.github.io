@@ -1,0 +1,239 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      text{ font-family: Helvetica;
+        font-weight: 300;
+        font-size: 12px;
+        }
+
+      #tooltip{
+        position: absolute;
+        z-index: 2;
+        background:white;
+        border-style: solid;
+        border-color: lightgrey;
+        width:200px;
+        height:260px;
+        color:grey;
+        font-size: 13px;
+        padding:5px;
+        top:-150px;
+        left:-300px;
+        font-family: "HelveticaNeue-Light", "Helvetica Neue Light",
+        "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;
+      }
+
+      #title {
+        display: flex;
+        justify-content: center;
+        white-space: nowrap;
+      }
+
+      #descr {
+        padding-left: 5px
+      }
+    </style>
+      <script src="http://d3js.org/d3.v5.min.js" type="text/JavaScript"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-legend/2.25.6/d3-legend.min.js"></script>
+    </head>
+    <body>
+      <div id="title">
+        <h1>United States Graduation Rates 2016-2017</h1>
+      </div>
+      <div id="map"></div>
+      <div id="tooltip">
+        <div id="tip-header"></div>
+        <div id="tip-body"></div>
+      </div>
+      <div id="buttons"></div>
+      <div id=descr>
+        <p>This map shows the high school graduation rates of each state in the United States.
+          The data is from the 2016-2017 school year and is based off public high school 4-year
+          adjusted cohort graduation rates (ACGR). This meaning that the data accounts for students
+          who transfer in and out of the schools within the 4-year high school timeframe. The dropdown
+          box allows you to choose different graduation rates to view, such as overall or by race. The
+          chart that displays on the hover shows where the selected state's graduation rate falls according
+          to the other states.
+          <br><br> Data Source: <a href="https://www.edweek.org/leadership/education-statistics-facts-about-american-schools/2019/01"> EducationWeek.org</a>
+          <br> GeoJSON Data Source: <a href="https://eric.clst.org/tech/usgeojson/"> eric.clst.org </a>
+          <br>Map by: Ashley Bender</p>
+      </div>
+
+    <script>
+      var height = 500;
+      var width = 1100;
+      var tipWidth = 200,
+          tipHeight = 300;
+      //Defines the projection of the map and scale
+      var projection = d3.geoAlbersUsa()
+                         .scale(800)
+                         .translate([width/2, height/2]);
+
+      var path = d3.geoPath().projection(projection);
+      var svg = d3.select("#map")
+                  .append("svg")
+                  .attr("width", width)
+                  .attr("height", height);
+      //Defines the color scheme
+      var color = d3.scaleSequential(d3.interpolateYlGn).domain([70, 100]);
+      
+      var chart = d3.select("#tip-body").append("svg")
+                    .attr('width', tipWidth)
+                    .attr('height', tipHeight);
+
+      var selectedOption = "Overall";
+
+      Promise.all([d3.json('Data/US_States.json'), d3.csv('Data/GraduationRateData.csv' )])
+        .then(function ready(loadData) {
+          //loading data from json and csv files
+          var world = loadData[0]
+          var data = loadData[1]
+          console.log(world);
+          console.log(data);
+
+          //Text for the dropdown buttons
+          var dropdown_text = ["Overall", "White", "Black", "Hispanic", "Asian Pacific Islander", "American Indian Alaska Native"]
+          var dropdown_value = ["Overall", "White", "Black", "Hispanic", "Asian_PacificIslander", "AmericanIndian_AlaskaNative"]
+          // Initializes the buttons
+          var dropdownButton = d3.select("#buttons")
+                                 .append('select')
+
+          // add the options to the button
+          dropdownButton.selectAll('options')
+             	          .data(dropdown_text)
+                        .enter()
+            	          .append('option')
+                        .text(function (d) { return d; })
+                        .attr("value", function (d, i) { return dropdown_value[i]; });
+
+          var gradRate = new Map(data.map(d => [d.State, parseFloat(d.Overall)]));
+          var raceGradRates = new Map(data.map(d => [d.State, {"Overall": parseFloat(d.Overall),"White": parseFloat(d.White), "Black": parseFloat(d.Black),
+                                                               "Hispanic": parseFloat(d.Hispanic), "Asian_PacificIslander": parseFloat(d.Asian_PacificIslander),
+                                                               "AmericanIndian_AlaskaNative": parseFloat(d.AmericanIndian_AlaskaNative)}]));
+          //Builds the bars that displays on the hover event
+          function buildBar(d) {
+            var gradRatesSorted = data.slice().sort(function(a,b){ return d3.descending(+parseFloat(a[selectedOption]), +parseFloat(b[selectedOption]));})
+            var gradRateList = gradRatesSorted.map(d => d.State);
+            var yScale = d3.scaleBand().domain(gradRateList).rangeRound([0, tipWidth]);
+            var xScale = d3.scaleLinear().domain([0, 4]).range([0, tipWidth]);
+            //Creates the bars
+            chart.selectAll('.bar')
+                .data(gradRatesSorted)
+                .enter().append('rect')
+                .attr('class', 'bar')
+                .attr('id', function(d) { return (d.State); })
+                .attr('x', xScale(0))
+                .attr('y', function(d) { return yScale(d.State); })
+                .attr('width', function(d) {return xScale(parseFloat(d[selectedOption]))/25; })
+                .attr('height', yScale.bandwidth()-1.1)
+                .attr('fill', function(d){return color(parseFloat(d[selectedOption]))});
+          }
+
+          //Creates and displays the tooltip on the hover event
+          var hover = function(d) {
+            d3.selectAll('path').style('stroke', 'transperent');
+            var div = document.getElementById('tooltip')
+            div.style.left = event.pageX +'px';
+            div.style.top = event.pageY + 'px';
+            d3.select(this).style('stroke', 'grey').call(buildBar)
+            var divHead = document.getElementById('tip-header')
+            divHead.innerHTML =  '<h3>' + d.properties.NAME + '</h3>' + selectedOption + ' Student Graduation Rate: ' + gradRate.get(d.properties.NAME) + "%";
+            var divChart = document.getElementById('chart-body')
+            d3.select('#'+d.properties.NAME).attr('fill','red')
+          }
+
+          //Returns the highlighted bar back to it's original color
+          var out = function(d){
+              var div = document.getElementById('tooltip')
+              d3.select(this).style('stroke', 'transparent');
+              d3.select('#'+d.properties.NAME).attr('fill',function(d){return color(parseFloat(d[selectedOption]))});
+          }
+
+          //Creates the map
+          svg.selectAll("path")
+             .data(world.features)
+             .enter()
+             .append("path")
+             .attr("d", path)
+             .style("fill", function (d) {
+               return color(gradRate.get(d.properties.NAME));
+             })
+             .on("mouseover", hover)
+             .on("mouseout", out);
+
+          // Creates the legend
+          svg.append("g")
+             .attr("class", "legend")
+             .attr("transform", "translate(550,455)");
+          var legendLinear = d3.legendColor()
+                               .shapeWidth(70)
+                               .orient('horizontal')
+                               .scale(color);
+          svg.select(".legend")
+             .call(legendLinear);
+
+          // function for zoom goes here
+          var mapZoom = d3.zoom().on("zoom", function() {
+            svg.selectAll('path')
+               .transition()
+               .duration(1000)
+               .attr('transform', d3.event.transform)
+          });
+          svg.call(mapZoom)
+
+          //Updates the coloring of the map based on the dropdown selection
+          function updateMap(choice) {
+            svg.selectAll("path")
+               .style("fill", function (d, i) {
+                 var state = raceGradRates.get(data[i].State);
+                 return color(parseFloat(state[choice]));
+               })
+               .on("mouseover", updateTooltip)
+               .on("mouseout", out);
+          }
+
+          //Creates a new tooltip based on the newly selected dropdown selection
+          function updateTooltip(d) {
+            d3.selectAll('path').style('stroke', 'transperent');
+            var div = document.getElementById('tooltip')
+            div.style.left = event.pageX +'px';
+            div.style.top = event.pageY + 'px';
+            d3.select(this).style('stroke', 'grey').call(buildNewBar)
+            var divHead = document.getElementById('tip-header')
+            divHead.innerHTML =  '<h3>' + d.properties.NAME + '</h3>' + selectedOption + ' Student Graduation Rate: ' + gradRate.get(d.properties.NAME) + "%";
+            var divChart = document.getElementById('chart-body')
+            d3.select('#'+d.properties.NAME).attr('fill','red')
+          }
+
+          //Creates a new bar chart based on the dropdown selection to display on the tooltip on hover
+          function buildNewBar(d) {
+            //removes the previous bar chart
+            chart.selectAll('.bar').remove();
+            gradRatesSorted = data.slice().sort(function(a,b){return d3.descending(+parseFloat(a[selectedOption]), +parseFloat(b[selectedOption]));})
+            gradRateList = gradRatesSorted.map(d => d.State);
+            // draw a chart
+            var yScale = d3.scaleBand().domain(gradRateList).rangeRound([0, tipWidth]);
+            var xScale = d3.scaleLinear().domain([0, 4]).range([0, tipWidth]);
+            //creates the bars
+            chart.selectAll('.bar')
+                 .data(gradRatesSorted)
+                 .enter().append('rect')
+                 .attr('class', 'bar')
+                 .attr('id', function(d) { return (d.State); })
+                 .attr('x', xScale(0))
+                 .attr('y', function(d) { return yScale(d.State); })
+                 .attr('width', function(d) {return xScale(parseFloat(d[selectedOption]))/25; })
+                 .attr('height', yScale.bandwidth()-1.1)
+                 .attr('fill', function(d){return color(parseFloat(d[selectedOption]))});
+          }
+
+          //calls the updateMap funtion when the dropdown option is changed
+          dropdownButton.on("change", function(d) {
+            selectedOption = d3.select(this).property("value")
+            updateMap(selectedOption)
+          })
+      })
+    </script>
+</body>
+</html>
