@@ -84,7 +84,7 @@
 
       var selectedOption = "Overall";
 
-      Promise.all([d3.json('Data/US_States.json'), d3.csv('Data/GraduationRateData.csv' )])
+      Promise.all([d3.json('US_States.json'), d3.csv('GraduationRateData.csv' )])
         .then(function ready(loadData) {
           //loading data from json and csv files
           var world = loadData[0]
